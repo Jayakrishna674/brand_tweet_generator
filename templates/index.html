@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Generate brand-aware social media tweets with AI.">
+    <title>BrandVoice AI | Tweet Generator</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="{{ url_for('static', filename='script.js') }}" defer></script>
+</head>
+<body>
+    <header class="topbar">
+        <a href="/" class="logo"><span>✦</span> BrandVoice AI</a>
+        <span class="status"><span class="status-dot"></span> Local AI Studio</span>
+    </header>
+
+    <main class="container">
+        <section class="hero">
+            <div class="eyebrow">AI SOCIAL MEDIA STUDIO</div>
+            <h1>Turn your brand voice into <span>great tweets.</span></h1>
+            <p>Describe your brand. Let AI create 10 unique tweets that fit your campaign.</p>
+        </section>
+
+        <section class="workspace">
+            <form id="brand-form" class="panel form-panel">
+                <div class="section-heading">
+                    <div><span class="step-label">STEP 01</span><h2>Tell us about your brand</h2></div>
+                    <span class="heading-icon">✎</span>
+                </div>
+
+                <label for="brand">Brand name <span class="optional">Optional</span></label>
+                <input id="brand" name="brand" maxlength="100" placeholder="e.g. TrendyWear">
+
+                <label for="industry">Industry / category <span class="optional">Optional</span></label>
+                <input id="industry" name="industry" maxlength="100" placeholder="e.g. Fashion, Food, Technology">
+
+                <label for="objective">Campaign objective</label>
+                <select id="objective" name="objective">
+                    <option value="Engagement">Engagement — start conversations</option>
+                    <option value="Promotion">Promotion — showcase products</option>
+                    <option value="Awareness">Awareness — grow brand visibility</option>
+                </select>
+
+                <label for="products">Products or services</label>
+                <textarea id="products" name="products" rows="4" maxlength="1000" required
+                    placeholder="Describe your products, key features and what makes them useful..."></textarea>
+                <div class="field-hint">Avoid sharing confidential business information.</div>
+
+                <label for="tone">Preferred brand tone</label>
+                <select id="tone" name="tone">
+                    <option value="Friendly">Friendly and approachable</option>
+                    <option value="Witty and humorous">Witty and humorous</option>
+                    <option value="Premium and professional">Premium and professional</option>
+                    <option value="Bold and motivational">Bold and motivational</option>
+                    <option value="Informative and educational">Informative and educational</option>
+                </select>
+
+                <button type="submit" id="generate-btn" class="primary-btn">
+                    <span id="button-label">✦ Generate 10 Tweets</span>
+                </button>
+                <p class="privacy-note">✦ Generated using your local Ollama model.</p>
+            </form>
+
+            <section class="panel output-panel" aria-live="polite">
+                <div class="section-heading">
+                    <div><span class="step-label">STEP 02</span><h2>Your generated content</h2></div>
+                    <span class="heading-icon">✧</span>
+                </div>
+
+                <div id="empty-state" class="empty-state">
+                    <div class="empty-icon">✧</div>
+                    <h3>Your next 10 tweets start here</h3>
+                    <p>Fill in your brand details and generate content tailored to your campaign.</p>
+                    <div class="mini-tags">
+                        <span>Conversational</span><span>Promotional</span><span>Witty</span><span>Informative</span>
+                    </div>
+                </div>
+
+                <div id="loading-state" class="loading-state" hidden>
+                    <div class="spinner"></div>
+                    <h3>Creating your brand voice...</h3>
+                    <p>Your local AI is working. This may take a minute.</p>
+                </div>
+
+                <div id="error-message" class="error-message" role="alert" hidden></div>
+
+                <div id="results" hidden>
+                    <div class="voice-card">
+                        <h3>✦ Brand voice analysis</h3>
+                        <ul id="voice-summary"></ul>
+                    </div>
+                    <div class="tweets-heading">
+                        <div><h3>Your 10 tweets</h3><p>Review, copy and use in your campaign.</p></div>
+                        <button id="copy-all-btn" type="button" class="secondary-btn">Copy all</button>
+                    </div>
+                    <div id="tweet-list" class="tweet-list"></div>
+                </div>
+            </section>
+        </section>
+
+        <footer>
+            <p>BrandVoice AI · HTML, CSS, JavaScript, Flask & Ollama</p>
+            <p>AI-generated content should be reviewed before publishing.</p>
+        </footer>
+    </main>
+</body>
+</html>
