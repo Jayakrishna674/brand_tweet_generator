@@ -88,6 +88,9 @@ def generate_tweets():
     brand = brand or "Unnamed Brand"
     industry = industry or "Not specified"
 
+    # Generate the prompt for Gemini.
+    # IMPORTANT: Literal JSON braces inside this f-string
+    # must be doubled: {{ and }}.
     prompt = f"""
 You are an expert social media content strategist.
 
@@ -183,7 +186,7 @@ Before returning, check:
 Return ONLY valid JSON. Do not include Markdown or explanations.
 
 Use this structure:
-{
+{{
   "voice_summary": [
     "Tone and personality: ...",
     "Target audience: ...",
@@ -191,20 +194,23 @@ Use this structure:
     "Writing style: ..."
   ],
   "tweets": [
-    {"type": "Engaging / Conversational", "text": "..."}
+    {{"type": "Engaging / Conversational", "text": "..."}}
   ]
-}
+}}
 
 Each tweet object must contain only "type" and "text".
 """
 
+    # Read the API key from the environment.
     api_key = os.getenv("GEMINI_API_KEY")
 
     if not api_key:
         app.logger.error("GEMINI_API_KEY is not configured")
         return jsonify({
-            "error": "AI service is not configured. "
-                     "Please contact the application owner."
+            "error": (
+                "AI service is not configured. "
+                "Please contact the application owner."
+            )
         }), 503
 
     try:
@@ -305,7 +311,7 @@ Each tweet object must contain only "type" and "text".
                     "Each tweet must be at most 280 characters"
                 )
 
-            # Detect exact duplicates, ignoring case and whitespace.
+            # Detect duplicates, ignoring case and whitespace.
             normalized_text = re.sub(
                 r"\s+", " ", tweet_text
             ).casefold()
@@ -337,15 +343,19 @@ Each tweet object must contain only "type" and "text".
     except ValueError:
         app.logger.exception("Invalid Gemini response")
         return jsonify({
-            "error": "The AI returned an invalid response. "
-                     "Please try again."
+            "error": (
+                "The AI returned an invalid response. "
+                "Please try again."
+            )
         }), 502
 
     except Exception:
         app.logger.exception("Gemini API request failed")
         return jsonify({
-            "error": "The AI service request failed. "
-                     "Please try again shortly."
+            "error": (
+                "The AI service request failed. "
+                "Please try again shortly."
+            )
         }), 502
 
 
@@ -354,5 +364,5 @@ if __name__ == "__main__":
     app.run(
         host="127.0.0.1",
         port=5000,
-        debug=False
+        debug=False,
     )
