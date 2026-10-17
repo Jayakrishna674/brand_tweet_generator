@@ -14,6 +14,16 @@ const copyAllBtn = document.getElementById("copy-all-btn");
 
 let generatedTweets = [];
 
+const loadingMessages = [
+    "Analyzing your brand voice...",
+    "Finding creative angles...",
+    "Crafting your tweet ideas...",
+    "Refining your content..."
+];
+
+let loadingInterval;
+
+
 // Generate tweets when the form is submitted
 form.addEventListener("submit", async function (event) {
     event.preventDefault();
@@ -21,12 +31,17 @@ form.addEventListener("submit", async function (event) {
     const formData = new FormData(form);
 
     const brandData = {
-        brand: formData.get("brand"),
-        industry: formData.get("industry"),
+        brand: formData.get("brand").trim(),
+        industry: formData.get("industry").trim(),
         objective: formData.get("objective"),
-        products: formData.get("products"),
+        products: formData.get("products").trim(),
         tone: formData.get("tone")
     };
+
+    if (!brandData.products) {
+        showError("Please describe your brand's products or services.");
+        return;
+    }
 
     hideError();
     results.hidden = true;
@@ -34,7 +49,9 @@ form.addEventListener("submit", async function (event) {
     loadingState.hidden = false;
 
     generateBtn.disabled = true;
-    buttonLabel.textContent = "Generating tweets...";
+    buttonLabel.textContent = "Creating your tweets...";
+
+    startLoadingMessages();
 
     try {
         const response = await fetch("/api/generate", {
@@ -45,7 +62,15 @@ form.addEventListener("submit", async function (event) {
             body: JSON.stringify(brandData)
         });
 
-        const data = await response.json();
+        let data;
+
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error(
+                "The server returned an invalid response. Please try again."
+            );
+        }
 
         if (!response.ok) {
             throw new Error(
@@ -53,7 +78,7 @@ form.addEventListener("submit", async function (event) {
             );
         }
 
-        // Check the response structure
+        // Validate the response structure.
         if (
             !Array.isArray(data.voice_summary) ||
             data.voice_summary.length !== 4 ||
@@ -65,19 +90,23 @@ form.addEventListener("submit", async function (event) {
             );
         }
 
-        // Check that every tweet has the required fields
+        const validSummary = data.voice_summary.every(function (point) {
+            return typeof point === "string" && point.trim() !== "";
+        });
+
         const validTweets = data.tweets.every(function (tweet) {
             return (
                 tweet &&
                 typeof tweet.text === "string" &&
                 tweet.text.trim() !== "" &&
+                tweet.text.length <= 280 &&
                 typeof tweet.type === "string"
             );
         });
 
-        if (!validTweets) {
+        if (!validSummary || !validTweets) {
             throw new Error(
-                "Some generated tweets are invalid. Please try again."
+                "Some generated content is invalid. Please try again."
             );
         }
 
@@ -91,6 +120,7 @@ form.addEventListener("submit", async function (event) {
         emptyState.hidden = false;
 
     } finally {
+        stopLoadingMessages();
         loadingState.hidden = true;
         generateBtn.disabled = false;
         buttonLabel.textContent = "✦ Generate 10 Tweets";
@@ -98,21 +128,41 @@ form.addEventListener("submit", async function (event) {
 });
 
 
-// Display the brand voice summary and generated tweets
+// Rotate loading messages without pretending to show actual progress.
+function startLoadingMessages() {
+    const loadingHeading = loadingState.querySelector("h3");
+    let messageIndex = 0;
+
+    loadingHeading.textContent = loadingMessages[messageIndex];
+
+    loadingInterval = setInterval(function () {
+        messageIndex = (messageIndex + 1) % loadingMessages.length;
+        loadingHeading.textContent = loadingMessages[messageIndex];
+    }, 2200);
+}
+
+
+function stopLoadingMessages() {
+    if (loadingInterval) {
+        clearInterval(loadingInterval);
+        loadingInterval = null;
+    }
+}
+
+
+// Display the brand voice summary and generated tweets.
 function displayResults(data) {
     voiceSummary.replaceChildren();
     tweetList.replaceChildren();
 
     generatedTweets = data.tweets;
 
-    // Display the 4 brand voice points
     data.voice_summary.forEach(function (point) {
         const item = document.createElement("li");
         item.textContent = point;
         voiceSummary.appendChild(item);
     });
 
-    // Display all 10 tweets
     data.tweets.forEach(function (tweet, index) {
         const card = document.createElement("article");
         card.className = "tweet-card";
@@ -129,6 +179,10 @@ function displayResults(data) {
         copyButton.type = "button";
         copyButton.className = "copy-btn";
         copyButton.textContent = "Copy";
+        copyButton.setAttribute(
+            "aria-label",
+            "Copy tweet " + (index + 1)
+        );
 
         copyButton.addEventListener("click", function () {
             copyText(tweet.text, copyButton);
@@ -150,10 +204,18 @@ function displayResults(data) {
 
     results.hidden = false;
     emptyState.hidden = true;
+
+    // Bring the generated content into view on smaller screens.
+    if (window.matchMedia("(max-width: 850px)").matches) {
+        results.scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+    }
 }
 
 
-// Copy all 10 tweets
+// Copy all 10 tweets.
 copyAllBtn.addEventListener("click", async function () {
     if (generatedTweets.length === 0) {
         showError("Generate tweets before using Copy All.");
@@ -172,14 +234,33 @@ copyAllBtn.addEventListener("click", async function () {
 });
 
 
-// Copy text to the clipboard
+// Copy text to the clipboard.
 async function copyText(text, button) {
     const originalText = button.textContent;
 
     try {
-        await navigator.clipboard.writeText(text);
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+        } else {
+            // Fallback for local development or unsupported browsers.
+            const temporaryInput = document.createElement("textarea");
+            temporaryInput.value = text;
+            temporaryInput.style.position = "fixed";
+            temporaryInput.style.opacity = "0";
 
-        button.textContent = "Copied!";
+            document.body.appendChild(temporaryInput);
+            temporaryInput.select();
+
+            const copied = document.execCommand("copy");
+            temporaryInput.remove();
+
+            if (!copied) {
+                throw new Error("Clipboard copy failed");
+            }
+        }
+
+        hideError();
+        button.textContent = "✓ Copied!";
 
         setTimeout(function () {
             button.textContent = originalText;
@@ -193,14 +274,14 @@ async function copyText(text, button) {
 }
 
 
-// Show an error message
+// Show an error message.
 function showError(message) {
     errorMessage.textContent = message;
     errorMessage.hidden = false;
 }
 
 
-// Clear the error message
+// Clear the error message.
 function hideError() {
     errorMessage.textContent = "";
     errorMessage.hidden = true;
