@@ -3,13 +3,13 @@ import json
 import os
 import re
 
-import requests
 from flask import Flask, jsonify, render_template, request
+from google import genai
+from google.genai import types
 
 app = Flask(__name__)
 
-OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-MODEL_NAME = os.getenv("OLLAMA_MODEL", "llama3.2:3b")
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 REQUIRED_TWEET_TYPES = {
     "Engaging / Conversational",
@@ -36,7 +36,9 @@ def generate_tweets():
     data = request.get_json(silent=True)
 
     if not isinstance(data, dict):
-        return jsonify({"error": "Please submit valid form data."}), 400
+        return jsonify({
+            "error": "Please submit valid form data."
+        }), 400
 
     brand = str(data.get("brand", "")).strip()
     industry = str(data.get("industry", "")).strip()
@@ -59,7 +61,11 @@ def generate_tweets():
             "error": "Please describe the brand's products or services."
         }), 400
 
-    allowed_objectives = {"Engagement", "Promotion", "Awareness"}
+    allowed_objectives = {
+        "Engagement",
+        "Promotion",
+        "Awareness",
+    }
 
     allowed_tones = {
         "Friendly",
@@ -99,21 +105,24 @@ TASK 1: ANALYSE THE BRAND VOICE
 
 Infer the most suitable brand voice from the supplied details.
 Do not claim that you reviewed actual social media posts.
-Do not invent facts about the brand, its customers, or its products.
+Do not invent facts about the brand, its customers, or products.
 
-Return exactly four concise but useful summary strings.
-Use these exact labels in this exact order:
+Return exactly four concise summary strings in this order:
 
 1. Tone and personality:
 Describe how the brand should sound and feel.
+
 2. Target audience:
 Describe the likely audience based on the supplied information.
+
 3. Content themes:
 Suggest relevant topics connected to the products and objective.
-4. Writing style:
-Describe wording, sentence length, questions, humour, and calls to action
-where appropriate.
 
+4. Writing style:
+Describe wording, sentence length, questions, humour, and
+calls to action where appropriate.
+
+Use these exact labels at the beginning of each summary.
 Each category must contain a specific explanation.
 Do not repeat the same information across categories.
 
@@ -132,16 +141,16 @@ Highlight supplied products or services and include a suitable
 call to action where appropriate.
 
 3. Witty / Meme-style
-Use clever observations or relatable humour when suitable for the brand.
+Use clever observations or relatable humour when suitable.
 Do not force jokes into a serious or premium brand voice.
 
 4. Informative / Value-driven
-Provide useful tips, explanations, or practical advice related to the
-industry, audience, or products.
+Provide useful tips, explanations, or practical advice related
+to the industry, audience, or products.
 
-Create at least two tweets for EACH of the four styles.
-Use the remaining two tweets for the styles most suitable for the
-campaign objective.
+Create at least two tweets for EACH style.
+Use the remaining two tweets for styles most suitable for
+the campaign objective.
 
 Use these exact type labels:
 "Engaging / Conversational"
@@ -153,19 +162,18 @@ TWEET QUALITY RULES
 
 - Generate exactly 10 tweets.
 - Keep every tweet between 1 and 280 characters.
-- Match the inferred brand voice, audience, themes, and writing style.
-- Support the selected campaign objective: {objective}.
+- Match the inferred brand voice and campaign objective.
 - Make each tweet distinct in its main idea.
 - Vary opening phrases, sentence structures, and calls to action.
 - Avoid generic filler and repetitive wording.
 - Use natural, clear language suitable for the audience.
 - Do not invent discounts, statistics, product features, reviews,
-  results, guarantees, or other unsupported brand claims.
+  results, guarantees, or unsupported brand claims.
 - Make humour appropriate to the preferred tone.
-- Use only the supplied details and reasonable general knowledge.
+- Use supplied details and reasonable general knowledge.
 
-Before returning the result, check:
-- Exactly four correctly labelled brand voice summary strings.
+Before returning, check:
+- Exactly four correctly labelled summary strings.
 - Exactly ten tweet objects.
 - At least two tweets of each content style.
 - No exact duplicate tweets.
@@ -175,7 +183,7 @@ Before returning the result, check:
 Return ONLY valid JSON. Do not include Markdown or explanations.
 
 Use this structure:
-{{
+{
   "voice_summary": [
     "Tone and personality: ...",
     "Target audience: ...",
@@ -183,32 +191,39 @@ Use this structure:
     "Writing style: ..."
   ],
   "tweets": [
-    {{"type": "Engaging / Conversational", "text": "..."}}
+    {"type": "Engaging / Conversational", "text": "..."}
   ]
-}}
+}
 
-Each tweet object must contain only the fields "type" and "text".
+Each tweet object must contain only "type" and "text".
 """
 
+    api_key = os.getenv("GEMINI_API_KEY")
+
+    if not api_key:
+        app.logger.error("GEMINI_API_KEY is not configured")
+        return jsonify({
+            "error": "AI service is not configured. "
+                     "Please contact the application owner."
+        }), 503
+
     try:
-        response = requests.post(
-            OLLAMA_URL,
-            json={
-                "model": MODEL_NAME,
-                "prompt": prompt,
-                "format": "json",
-                "stream": False,
-                "options": {
-                    "temperature": 0.7,
-                    "num_predict": 2500,
-                },
-            },
-            timeout=(5, 240),
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model=MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                temperature=0.7,
+                max_output_tokens=4000,
+            ),
         )
 
-        response.raise_for_status()
-        result = response.json()
-        output = json.loads(result["response"])
+        if not response.text:
+            raise ValueError("The AI returned an empty response")
+
+        output = json.loads(response.text)
 
         if not isinstance(output, dict):
             raise ValueError("The AI response must be a JSON object")
@@ -218,7 +233,9 @@ Each tweet object must contain only the fields "type" and "text".
 
         # Validate the brand voice summary.
         if not isinstance(summary, list) or len(summary) != 4:
-            raise ValueError("The summary must contain exactly four categories")
+            raise ValueError(
+                "The summary must contain exactly four categories"
+            )
 
         clean_summary = []
 
@@ -229,19 +246,26 @@ Each tweet object must contain only the fields "type" and "text".
             item = item.strip()
 
             if not item.lower().startswith(label.lower()):
-                raise ValueError(f"Missing summary category: {label}")
+                raise ValueError(
+                    f"Missing summary category: {label}"
+                )
 
             if len(item) > 350:
-                raise ValueError("A brand voice summary item is too long")
+                raise ValueError(
+                    "A brand voice summary item is too long"
+                )
 
             clean_summary.append(item)
 
         # Validate the number of tweets.
         if not isinstance(tweets, list) or len(tweets) != 10:
-            raise ValueError("The AI must return exactly 10 tweets")
+            raise ValueError(
+                "The AI must return exactly 10 tweets"
+            )
 
         type_counts = {
-            tweet_type: 0 for tweet_type in REQUIRED_TWEET_TYPES
+            tweet_type: 0
+            for tweet_type in REQUIRED_TWEET_TYPES
         }
 
         clean_tweets = []
@@ -251,9 +275,10 @@ Each tweet object must contain only the fields "type" and "text".
             if not isinstance(tweet, dict):
                 raise ValueError("Invalid tweet format")
 
-            # Reject unexpected fields.
             if set(tweet.keys()) != {"type", "text"}:
-                raise ValueError("Each tweet must contain only type and text")
+                raise ValueError(
+                    "Each tweet must contain only type and text"
+                )
 
             tweet_type = tweet.get("type")
             tweet_text = tweet.get("text")
@@ -268,21 +293,27 @@ Each tweet object must contain only the fields "type" and "text".
             tweet_text = tweet_text.strip()
 
             if tweet_type not in REQUIRED_TWEET_TYPES:
-                raise ValueError(f"Unexpected tweet type: {tweet_type}")
+                raise ValueError(
+                    f"Unexpected tweet type: {tweet_type}"
+                )
 
             if not tweet_text:
                 raise ValueError("A tweet cannot be empty")
 
             if len(tweet_text) > 280:
-                raise ValueError("Each tweet must be at most 280 characters")
+                raise ValueError(
+                    "Each tweet must be at most 280 characters"
+                )
 
-            # Detect exact duplicates, ignoring case and extra whitespace.
+            # Detect exact duplicates, ignoring case and whitespace.
             normalized_text = re.sub(
                 r"\s+", " ", tweet_text
             ).casefold()
 
             if normalized_text in seen_texts:
-                raise ValueError("The AI generated duplicate tweets")
+                raise ValueError(
+                    "The AI generated duplicate tweets"
+                )
 
             seen_texts.add(normalized_text)
             type_counts[tweet_type] += 1
@@ -292,7 +323,7 @@ Each tweet object must contain only the fields "type" and "text".
                 "text": tweet_text,
             })
 
-        # Require at least two tweets from every requested style.
+        # Require at least two tweets from every style.
         if any(count < 2 for count in type_counts.values()):
             raise ValueError(
                 "Each content style must have at least two tweets"
@@ -303,30 +334,25 @@ Each tweet object must contain only the fields "type" and "text".
             "tweets": clean_tweets,
         })
 
-    except requests.exceptions.ConnectionError:
-        app.logger.exception("Cannot connect to Ollama")
+    except ValueError:
+        app.logger.exception("Invalid Gemini response")
         return jsonify({
-            "error": "Cannot connect to Ollama. Open Ollama and check that it is running."
-        }), 503
-
-    except requests.exceptions.Timeout:
-        return jsonify({
-            "error": "The AI took too long to respond. Try again or use a smaller model."
-        }), 504
-
-    except requests.exceptions.RequestException:
-        app.logger.exception("Ollama request failed")
-        return jsonify({
-            "error": "The AI request failed. Check your Ollama installation and model."
+            "error": "The AI returned an invalid response. "
+                     "Please try again."
         }), 502
 
-    except (ValueError, KeyError, TypeError):
-        app.logger.exception("Invalid AI response")
+    except Exception:
+        app.logger.exception("Gemini API request failed")
         return jsonify({
-            "error": "The AI returned an invalid response. Please try again."
+            "error": "The AI service request failed. "
+                     "Please try again shortly."
         }), 502
 
 
 if __name__ == "__main__":
-    # Local development only. Do not expose this server publicly.
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    # Local development only. Render should use Gunicorn.
+    app.run(
+        host="127.0.0.1",
+        port=5000,
+        debug=False
+    )
